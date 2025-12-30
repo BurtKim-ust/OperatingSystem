@@ -1,0 +1,68 @@
+## ECE357 P6P2
+# Jonghyeok Kim
+
+
+## 2A
+Output after "gcc -o test spinlock_test.c spinlock.c tas64.S":
+Terminal 1
+root@MSI:/mnt/c/ece357/pset6# ./test lock
+Before: 0, adding 1 after 10 seconds...
+After: 1
+
+Terminal 2
+root@MSI:/mnt/c/ece357/pset6# ./test lock
+Before: 0, adding 1 after 10 seconds...
+After: 2
+
+## 2B sem
+checked
+
+## 2C fifo
+Issue #1: 
+=> Spinlock protects buffer & head/tail updates
+
+Issue #2: 
+slots - writer blocks when full
+items -  reader blocks when empty
+=> writer waits slots and signals items, 
+   reader waits items and signals slots
+
+## 2D
+root@MSI:/mnt/c/ece357/pset6# gcc -o ftest ftest.c fifo.c sem.c spinlock.c tas64.S
+
+# Working Version
+root@MSI:/mnt/c/ece357/pset6# ./ftest -w 8 -n 64000
+Beginning test with 8 writers, 64000 items each
+Writer 1 completed
+Waiting for writer children to die
+Writer 0 completed
+Writer 2 completed
+Writer 3 completed
+Writer 7 completed
+Writer 6 completed
+Reader stream 1 completed
+Writer 4 completed
+Writer 5 completed
+Reader stream 0 completed
+Reader stream 2 completed
+Reader stream 3 completed
+Reader stream 7 completed
+Reader stream 6 completed
+Reader stream 4 completed
+Reader stream 5 completed
+All streams done
+All children exited normally
+
+# Broken Version - comment the spinlocks in fifo.c
+root@MSI:/mnt/c/ece357/pset6# ./ftest -w 8 -n 64000
+Beginning test with 8 writers, 64000 items each
+Detected out-of-sequence word 0:210 (expecting 209)
+Detected out-of-sequence word 0:211 (expecting 210)
+Detected out-of-sequence word 0:0 (expecting 211)
+...
+Waiting for writer children to die
+...
+Detected out-of-sequence word 7:62890 (expecting 64294)
+Detected out-of-sequence word 4:62810 (expecting 64238)
+All streams done
+All children exited normally

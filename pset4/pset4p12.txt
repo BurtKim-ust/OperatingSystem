@@ -1,0 +1,109 @@
+1A. (i) Send SIGQUIT (signal 3) to the process
+    (ii) Send SIGABRT (signal 6) to the process
+    They both have a default action of terminating with coredump.
+
+1B. We can remap the terminal's backspace to generate SIGQUIT instead.
+Specifically, using the stty command would allow use to reassign the terminal's backspace.
+
+1c. When there is a program that writes a large buffer to a pipe when SIGINT arrives. 
+If the pipe is nearly full and only part of the data has been written, 
+the signal handler interrupts the write. 
+Without SA_RESTART flag set, write() returns with the partial byte count. 
+The partial write "bug" will cause the program to lose track of how many bytes were 
+actually written and wouldn't know where to resume writing, corrupting the data stream.
+
+1D. The process is likely in an uninterruptible sleep state. 
+This typically happens when the process is waiting for Disk I/O that isn't responding, 
+which could be a failed NFS mount or bad disk problem. 
+The kernel won't deliver signals to processes in this state until the I/O completes or times out.
+
+1E. An IPI is a hardware interrupt sent from one CPU core to another in a multi-core system. 
+When a process on CPU1 sends a signal to a process running on CPU2, 
+the kernel uses an IPI to interrupt CPU2, forcing it to enter kernel mode.
+
+2A. 
+Screenshot:
+arhdtn@MSI ~/pset4
+$ ./2a 1000 15
+Child got signal 2, count is 644
+Parent got wait status 8000
+
+rhdtn@MSI ~/pset4
+root@MSI:/mnt/c/ece357/pset4# ./2a 2000 15
+Child got signal 2, count is 293 
+Parent got wait status 8000
+
+rhdtn@MSI ~/pset4
+root@MSI:/mnt/c/ece357/pset4# ./2a 3000 15
+Child got signal 2, count is 534 
+Parent got wait status 8000
+
+The count is significantly less than signals sent. 
+This confirms that SIGTERM(15) doesn't queue. 
+The signal loss happens because when multiple signals arrive 
+while the handler is executing, they collapse into a signal.
+
+2B.
+Screenshot:
+root@MSI:/mnt/c/ece357/pset4# ./2a 50000 15
+Parent got wait status 8b
+
+With gdb Analysis:
+(gdb) run 50000 15
+Starting program: /mnt/c/ece357/pset4/2a 50000 15
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+[Attaching after Thread 0x7ffff7fb3740 (LWP 24704) fork to child process 24705]
+[New inferior 4 (process 24705)]
+[Detaching after fork from parent process 24704]
+[Inferior 3 (process 24704) detached]
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+
+Thread 4.1 "2a" received signal SIGTERM, Terminated.
+[Switching to Thread 0x7ffff7fb3740 (LWP 24705)]
+arch_fork (ctid=0x7ffff7fb3a10) at ../sysdeps/unix/sysv/linux/arch-fork.h:52
+52      ../sysdeps/unix/sysv/linux/arch-fork.h: No such file or directory.
+(gdb) continue
+Continuing.
+
+Thread 4.1 "2a" received signal SIGINT, Interrupt.
+0x0000555555555289 in hh ()
+(gdb) continue
+Continuing.
+
+Thread 4.1 "2a" received signal SIGTERM, Terminated.
+0x0000555555555289 in hh ()
+(gdb) continue
+Continuing.
+
+With SA_NOMASK, signals are not blocked during handler execution. 
+Segfault happened because before hh() finishes, another signal arrives, 
+which causes hh() gets called again.
+This happens many times with 50k signals arriving rapidly. 
+
+2C:
+Screenshot:
+root@MSI:/mnt/c/ece357/pset4# ./2c 50000 15
+Child got signal 2, count is 7946 
+Parent got wait status 8000
+
+Fewer signals were received than with SA_NOMASK. With sa_flags=0, 
+the signal is automatically blocked during handler execution. 
+This prevents recursive handler invocations, making the handler 
+run to completion before the next signal can be delivered. 
+
+2D:
+Screenshot:
+rhdtn@MSI ~/pset4
+root@MSI:/mnt/c/ece357/pset4# ./2c 50000 35
+Child got signal 2, count is 50000 
+Parent got wait status 8000
+root@MSI:/mnt/c/ece357/pset4# ./2c 50000 50
+Child got signal 2, count is 50000 
+Parent got wait status 8000
+
+This demonstrates that real-time signals (34-63) actually queue. 
+Every single signal sent was received and counted. 
+Unlike standard signals, real-time signals don't overwrite each
+other when multiple instances are pending. 
